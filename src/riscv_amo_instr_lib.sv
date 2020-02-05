@@ -92,8 +92,13 @@ class riscv_lr_sc_instr_stream extends riscv_amo_base_instr_stream;
       allowed_sc_instr = {SC_W};
     end
     if (RV64A inside {supported_isa}) begin
+	`ifdef _VCP //DST642
+      allowed_lr_instr = {allowed_lr_instr, riscv_instr_name_t'(LR_D)};
+      allowed_sc_instr = {allowed_sc_instr, riscv_instr_name_t'(SC_D)};
+	`else
       allowed_lr_instr = {allowed_lr_instr, LR_D};
       allowed_sc_instr = {allowed_sc_instr, SC_D};
+	 `endif
     end
     lr_instr = riscv_instr::get_rand_instr(.include_instr({allowed_lr_instr}));
     sc_instr = riscv_instr::get_rand_instr(.include_instr({allowed_sc_instr}));

@@ -173,16 +173,28 @@ class riscv_instr extends uvm_object;
     basic_instr = {instr_category[SHIFT], instr_category[ARITHMETIC],
                    instr_category[LOGICAL], instr_category[COMPARE]};
     if (!cfg.no_ebreak) begin
+	`ifdef _VCP //DST642
+      basic_instr = {basic_instr, riscv_instr_name_t'(EBREAK)};
+	`else
       basic_instr = {basic_instr, EBREAK};
+	`endif
       foreach (riscv_instr_pkg::supported_isa[i]) begin
         if (RV32C inside {riscv_instr_pkg::supported_isa[i]}) begin
+		`ifdef _VCP //DST642
+          basic_instr = {basic_instr, riscv_instr_name_t'(C_EBREAK)};
+		`else
           basic_instr = {basic_instr, C_EBREAK};
+		`endif
           break;
         end
       end
     end
     if (cfg.no_dret == 0) begin
+	`ifdef _VCP //DST642
+      basic_instr = {basic_instr, riscv_instr_name_t'(DRET)};
+	`else
       basic_instr = {basic_instr, DRET};
+	`endif
     end
     if (cfg.no_fence == 0) begin
       basic_instr = {basic_instr, instr_category[SYNCH]};
@@ -191,7 +203,11 @@ class riscv_instr extends uvm_object;
       basic_instr = {basic_instr, instr_category[CSR]};
     end
     if (cfg.no_wfi == 0) begin
+	`ifdef _VCP //DST642
+      basic_instr = {basic_instr, riscv_instr_name_t'(WFI)};
+	`else
       basic_instr = {basic_instr, WFI};
+	`endif
     end
   endfunction : build_basic_instruction_list
 

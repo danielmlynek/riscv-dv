@@ -222,7 +222,11 @@ class riscv_rand_instr_stream extends riscv_instr_stream;
       exclude_instr = {C_ADDI4SPN, C_ADDI16SP, C_LWSP, C_LDSP};
     end
     if (is_in_debug && !cfg.enable_ebreak_in_debug_rom) begin
+	`ifdef _VCP //DST642
+      exclude_instr = {exclude_instr, riscv_instr_name_t'(EBREAK), riscv_instr_name_t'(C_EBREAK)};
+	`else
       exclude_instr = {exclude_instr, EBREAK, C_EBREAK};
+	`endif
     end
     instr = riscv_instr::get_rand_instr(.include_instr(allowed_instr),
                                         .exclude_instr(exclude_instr));
