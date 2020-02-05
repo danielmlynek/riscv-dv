@@ -46,7 +46,18 @@ class riscv_load_store_base_instr_stream extends riscv_mem_access_stream;
       rs1_reg == SP;
     }
   }
-
+`ifdef _VCP //Alternative to 'sp_c' constraint for 'use_sp_as_rs1' variable
+			//solve...before commented since it's only a 'use_sp_as_rs1' checker because it's rand_mode is disabled in pre_randomize() function
+			//Alternative constraint is disabled by default in new()
+  constraint _vcp_sp_c {
+    //solve use_sp_as_rs1 before rs1_reg;
+    use_sp_as_rs1 dist {1 := 1, 0 := 2};
+    if (use_sp_as_rs1) {
+      rs1_reg == SP;
+    }
+  }
+`endif
+  
   constraint rs1_c {
     !(rs1_reg inside {cfg.reserved_regs, reserved_rd, ZERO});
   }
@@ -65,6 +76,11 @@ class riscv_load_store_base_instr_stream extends riscv_mem_access_stream;
 
   function new(string name = "");
     super.new(name);
+`ifdef _VCP //Alternative to 'sp_c' constraint for 'use_sp_as_rs1' variable
+			//solve...before commented since it's only a 'use_sp_as_rs1' checker because it's rand_mode is disabled in pre_randomize() function
+			//Alternative constraint is disabled by default in new()
+	  _vcp_sp_c.constraint_mode(0);
+`endif
   endfunction
 
   virtual function void randomize_offset();
@@ -97,6 +113,12 @@ class riscv_load_store_base_instr_stream extends riscv_mem_access_stream;
     if (SP inside {cfg.reserved_regs, reserved_rd}) begin
       use_sp_as_rs1 = 0;
       use_sp_as_rs1.rand_mode(0);
+`ifdef _VCP //Alternative to 'sp_c' constraint for 'use_sp_as_rs1' variable
+			//solve...before commented since it's only a 'use_sp_as_rs1' checker because it's rand_mode is disabled in pre_randomize() function
+			//Original constraint replaced here by alternative one
+	  sp_c.constraint_mode(0);
+	  _vcp_sp_c.constraint_mode(1);
+`endif
     end
   endfunction
 
@@ -118,7 +140,13 @@ class riscv_load_store_base_instr_stream extends riscv_mem_access_stream;
     riscv_instr instr;
     if(avail_regs.size() > 0) begin
       `DV_CHECK_STD_RANDOMIZE_WITH_FATAL(avail_regs,
+`ifdef _VCP //DAM3819
+										foreach (avail_regs[i])
+											foreach (avail_regs[j]) 
+												if (i!=j) {avail_regs[i] != avail_regs[j]};
+`else
                                          unique{avail_regs};
+`endif
                                          avail_regs[0] inside {[S0 : A5]};
                                          foreach(avail_regs[i]) {
                                            !(avail_regs[i] inside {cfg.reserved_regs, reserved_rd});
@@ -134,13 +162,24 @@ class riscv_load_store_base_instr_stream extends riscv_mem_access_stream;
       allowed_instr = {LB, LBU, SB};
       if (!cfg.enable_unaligned_load_store) begin
         if (addr[i][0] == 1'b0) begin
+		`ifdef _VCP //DST642
+          allowed_instr = {riscv_instr_name_t'(LH), riscv_instr_name_t'(LHU), riscv_instr_name_t'(SH), allowed_instr};
+		`else
           allowed_instr = {LH, LHU, SH, allowed_instr};
+		`endif
         end
         if (addr[i] % 4 == 0) begin
+		`ifdef _VCP //DST642
+          allowed_instr = {riscv_instr_name_t'(LW), riscv_instr_name_t'(SW), allowed_instr};
+          if (cfg.enable_floating_point) begin
+            allowed_instr = {riscv_instr_name_t'(FLW), riscv_instr_name_t'(FSW), allowed_instr};
+          end
+		`else
           allowed_instr = {LW, SW, allowed_instr};
           if (cfg.enable_floating_point) begin
             allowed_instr = {FLW, FSW, allowed_instr};
           end
+		`endif
           if((offset[i] inside {[0:127]}) && (offset[i] % 4 == 0) &&
              (RV32C inside {riscv_instr_pkg::supported_isa}) &&
              enable_compressed_load_store) begin
@@ -148,33 +187,56 @@ class riscv_load_store_base_instr_stream extends riscv_mem_access_stream;
               `uvm_info(`gfn, "Add LWSP/SWSP to allowed instr", UVM_LOW)
               allowed_instr = {C_LWSP, C_SWSP};
             end else begin
-              allowed_instr = {C_LW, C_SW, allowed_instr};
+			`ifdef _VCP //DST642
+              allowed_instr = {riscv_instr_name_t'(C_LW), riscv_instr_name_t'(C_SW), allowed_instr};
+              if (cfg.enable_floating_point && (RV32FC inside {supported_isa})) begin
+                allowed_instr = {riscv_instr_name_t'(C_FLW), riscv_instr_name_t'(C_FSW), allowed_instr};
+              end
+			`else
+			  allowed_instr = {C_LW, C_SW, allowed_instr};
               if (cfg.enable_floating_point && (RV32FC inside {supported_isa})) begin
                 allowed_instr = {C_FLW, C_FSW, allowed_instr};
               end
+			`endif
             end
           end
         end
         if ((XLEN >= 64) && (addr[i] % 8 == 0)) begin
+		`ifdef _VCP //DST642
+          allowed_instr = {riscv_instr_name_t'(LWU), riscv_instr_name_t'(LD), riscv_instr_name_t'(SD), allowed_instr};
+          if (cfg.enable_floating_point && (RV32D inside {supported_isa})) begin
+            allowed_instr = {riscv_instr_name_t'(FLD), riscv_instr_name_t'(FSD), allowed_instr};
+          end
+		`else
           allowed_instr = {LWU, LD, SD, allowed_instr};
           if (cfg.enable_floating_point && (RV32D inside {supported_isa})) begin
             allowed_instr = {FLD, FSD, allowed_instr};
-          end
+		`endif
           if((offset[i] inside {[0:255]}) && (offset[i] % 8 == 0) &&
              (RV64C inside {riscv_instr_pkg::supported_isa} &&
              enable_compressed_load_store)) begin
             if (rs1_reg == SP) begin
               allowed_instr = {C_LDSP, C_SDSP};
             end else begin
+			`ifdef _VCP //DST642
+              allowed_instr = {riscv_instr_name_t'(C_LD), riscv_instr_name_t'(C_SD), allowed_instr};
+              if (cfg.enable_floating_point && (RV32DC inside {supported_isa})) begin
+                allowed_instr = {riscv_instr_name_t'(C_FLD), riscv_instr_name_t'(C_FSD), allowed_instr};
+              end
+			`else			
               allowed_instr = {C_LD, C_SD, allowed_instr};
               if (cfg.enable_floating_point && (RV32DC inside {supported_isa})) begin
                 allowed_instr = {C_FLD, C_FSD, allowed_instr};
-              end
+			`endif
             end
           end
         end
       end else begin // unaligned load/store
+	  `ifdef _VCP //DST642
+        allowed_instr = {riscv_instr_name_t'(LW), riscv_instr_name_t'(SW), riscv_instr_name_t'(LH), riscv_instr_name_t'(LHU), riscv_instr_name_t'(SH), allowed_instr};
+	  `else
         allowed_instr = {LW, SW, LH, LHU, SH, allowed_instr};
+	  `endif
         // Compressed load/store still needs to be aligned
         if ((offset[i] inside {[0:127]}) && (offset[i] % 4 == 0) &&
             (RV32C inside {riscv_instr_pkg::supported_isa}) &&
@@ -182,18 +244,30 @@ class riscv_load_store_base_instr_stream extends riscv_mem_access_stream;
             if (rs1_reg == SP) begin
               allowed_instr = {C_LWSP, C_SWSP};
             end else begin
+			`ifdef _VCP //DST642
+              allowed_instr = {riscv_instr_name_t'(C_LW), riscv_instr_name_t'(C_SW), allowed_instr};
+			`else
               allowed_instr = {C_LW, C_SW, allowed_instr};
+			`endif
             end
         end
         if (XLEN >= 64) begin
+		`ifdef _VCP //DST642
+          allowed_instr = {riscv_instr_name_t'(LWU), riscv_instr_name_t'(LD), riscv_instr_name_t'(SD), allowed_instr};
+		`else
           allowed_instr = {LWU, LD, SD, allowed_instr};
+		`endif
           if ((offset[i] inside {[0:255]}) && (offset[i] % 8 == 0) &&
               (RV64C inside {riscv_instr_pkg::supported_isa}) &&
               enable_compressed_load_store) begin
               if (rs1_reg == SP) begin
                 allowed_instr = {C_LWSP, C_SWSP};
               end else begin
+			  `ifdef _VCP //DST642
+                allowed_instr = {riscv_instr_name_t'(C_LD), riscv_instr_name_t'(C_SD), allowed_instr};
+			  `else
                 allowed_instr = {C_LD, C_SD, allowed_instr};
+			  `endif
               end
            end
         end
@@ -340,7 +414,13 @@ class riscv_multi_page_load_store_instr_stream extends riscv_mem_access_stream;
     }
     data_page_id.size() == num_of_instr_stream;
     rs1_reg.size() == num_of_instr_stream;
+`ifdef _VCP //DAM3819
+	foreach (rs1_reg[i])
+		foreach (rs1_reg[j]) 
+			if (i!=j) {rs1_reg[i] != rs1_reg[j]};
+`else
     unique {rs1_reg};
+`endif
     foreach(rs1_reg[i]) {
       !(rs1_reg[i] inside {cfg.reserved_regs, ZERO});
     }
@@ -349,7 +429,13 @@ class riscv_multi_page_load_store_instr_stream extends riscv_mem_access_stream;
   constraint page_c {
     solve num_of_instr_stream before data_page_id;
     num_of_instr_stream inside {[1 : max_data_page_id]};
+`ifdef _VCP //DAM3819
+	foreach (data_page_id[i])
+		foreach (data_page_id[j]) 
+			if (i!=j) {data_page_id[i] != data_page_id[j]};
+`else
     unique {data_page_id};
+`endif
   }
 
   // Avoid accessing a large number of pages because we may run out of registers for rs1
